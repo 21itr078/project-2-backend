@@ -11,7 +11,7 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Connect to MongoDB Atlas
-mongoose.connect('mongodb+srv://navaneethv:naveevenkatIT@cluster0.t37qosu.mongodb.net/?retryWrites=true&w=majority', {
+mongoose.connect("mongodb+srv://pradeep:kongu2004@cluster1.y5ght6n.mongodb.net/?retryWrites=true&w=majority", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
