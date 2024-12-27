@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -21,55 +23,82 @@ mongoose.connection.on('connected', () => {
 });
 
 const User = mongoose.model('User', {
+  googleId: String,
   email: String,
-  password: String,
+  name: String,
 });
 
-// Sign Up Route
-app.post('/api/signup', async (req, res) => {
-  try {
-    // Check if the user with the provided email already exists
-    const existingUser = await User.findOne({ email: req.body.email });
+// Passport Setup
+passport.use(new GoogleStrategy({
+  clientID: '3050463972-5mlofl3m7ho1kjsop4cjinfhuq00de9h.apps.googleusercontent.com',
+  clientSecret: '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',
+  callbackURL: 'http://localhost:5000/auth/google/callback',
+},
+(accessToken, refreshToken, profile, done) => {
+  User.findOne({ googleId: profile.id }, async (err, existingUser) => {
+    if (err) {
+      return done(err);
+    }
 
     if (existingUser) {
-      return res.status(400).json({ error: 'User with this email already exists' });
+      return done(null, existingUser);
     }
 
-    // Create a new user
-    const user = new User({
-      email: req.body.email,
-      password: req.body.password,
+    const newUser = new User({
+      googleId: profile.id,
+      email: profile.emails[0].value,
+      name: profile.displayName,
     });
 
-    // Save the new user
-    await user.save();
-    res.status(201).json({ message: 'User registered successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
-  }
+    await newUser.save();
+    done(null, newUser);
+  });
+}));
+
+// Serialize user for session
+passport.serializeUser((user, done) => {
+  done(null, user.id);
 });
 
-// Sign In Route
-app.post('/api/signin', async (req, res) => {
-  try {
-    // Find the user with the provided email and password
-    const user = await User.findOne({
-      email: req.body.email,
-      password: req.body.password,
-    });
+passport.deserializeUser((id, done) => {
+  User.findById(id, (err, user) => {
+    done(err, user);
+  });
+});
 
-    if (user) {
-      // User found, send a success response
-      return res.status(200).json({ message: 'Sign-in successful' });
-    } else {
-      // User not found or password doesn't match, send an error response
-      return res.status(401).json({ error: 'Sign-in failed. Check your credentials.' });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error' });
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Google Auth Routes
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/' }),
+  (req, res) => {
+    // Successful authentication, redirect to the front end
+    res.redirect('http://localhost:3000'); // Update with your React app URL
   }
+);
+
+// Logout Route
+app.get('/logout', (req, res) => {
+  req.logout();
+  res.redirect('/');
+});
+
+// Check if user is authenticated
+const ensureAuthenticated = (req, res, next) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.redirect('/');
+};
+
+// Example protected route
+app.get('/profile', ensureAuthenticated, (req, res) => {
+  res.json(req.user);
 });
 
 app.listen(PORT, () => {
